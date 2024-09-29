@@ -2,6 +2,8 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("kotlinx-serialization")
+    id("org.jetbrains.compose")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -37,7 +39,7 @@ android {
         compose = true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.4.3"
+        kotlinCompilerExtensionVersion = "1.5.15"
     }
     packaging {
         resources {
@@ -56,11 +58,17 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("co.yml:ycharts:2.1.0")
+//    implementation("co.yml:ycharts:2.1.0")
 
     implementation("io.ktor:ktor-client-okhttp:2.3.5")
     implementation("io.ktor:ktor-client-logging-jvm:2.3.5")
     implementation("io.ktor:ktor-client-serialization:2.3.5")
     implementation("io.ktor:ktor-client-content-negotiation:2.3.5")
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.5")
+
+    implementation("com.patrykandpatrick.vico:compose:2.0.0-beta.1")
+    implementation("com.patrykandpatrick.vico:compose-m2:2.0.0-beta.1")
+    implementation("com.patrykandpatrick.vico:compose-m3:2.0.0-beta.1")
+    implementation("com.patrykandpatrick.vico:core:2.0.0-beta.1")
+    implementation("com.patrykandpatrick.vico:views:2.0.0-beta.1")
 }
