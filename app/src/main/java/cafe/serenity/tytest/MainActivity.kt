@@ -1,5 +1,6 @@
 package cafe.serenity.tytest
 
+import android.content.res.Configuration
 import android.graphics.PointF
 import android.os.Bundle
 import android.util.Log
@@ -8,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -91,6 +94,8 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GraphScreen(viewModel: GraphViewModel) {
@@ -105,24 +110,46 @@ fun GraphScreen(viewModel: GraphViewModel) {
                 )
             }
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(it)
-            ) {
-                val state by viewModel.state.collectAsState()
-                GraphData(points = state.graphData.currentPoints)
-                Spacer(modifier = Modifier.weight(1.0f))
-                CountSlider(state.pointToRequestCount, viewModel::handleEvent)
+            val state by viewModel.state.collectAsState()
+
+            when (LocalConfiguration.current.orientation) {
+                Configuration.ORIENTATION_PORTRAIT, Configuration.ORIENTATION_UNDEFINED -> Portrait(it, state, viewModel::handleEvent)
+                Configuration.ORIENTATION_LANDSCAPE -> Landscape(it, state)
+                else -> Text(text = "Unsupported orientation")
             }
+
         }
     }
 }
 
 @Composable
-fun GraphData(points: List<PointF>?){
-    points.let {
+fun Portrait(paddingValues: PaddingValues, state: GraphViewModel.State, handleEvent: (event: GraphViewModel.Event) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(paddingValues)
+    ) {
+        GraphData(points = state.graphData.currentPoints)
+        Spacer(modifier = Modifier.weight(1.0f))
+        CountSlider(state.pointToRequestCount, handleEvent)
+    }
+}
+
+@Composable
+fun Landscape(paddingValues: PaddingValues, state: GraphViewModel.State) {
+    state.graphData.currentPoints.let {
         if(!it.isNullOrEmpty()) {
+            Graph(modifier = Modifier.padding(paddingValues), points = it)
+        } else {
+            Text(text = "No data")
+        }
+    }
+}
+
+@Composable
+fun GraphData(points: List<PointF>?) {
+    points.let {
+        if (!it.isNullOrEmpty()) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -135,7 +162,7 @@ fun GraphData(points: List<PointF>?){
             }
         } else {
             Text(
-                modifier=Modifier
+                modifier = Modifier
                     .fillMaxWidth()
                     .height(360.dp)
                     .wrapContentHeight(align = Alignment.CenterVertically),
@@ -151,17 +178,18 @@ fun GraphData(points: List<PointF>?){
 fun CountSlider(count: Int, handleEvents: (event: GraphViewModel.Event) -> Unit) {
     Column(
         modifier = Modifier.padding(16.dp)
-    ){
+    ) {
         TextField(
-            modifier=Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(),
             value = count.toString(),
             onValueChange = { handleEvents(GraphViewModel.Event.CountTextInput(it)) },
             label = { Text("Point count") },
             maxLines = 1,
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.NumberPassword,
-                imeAction = ImeAction.Send)
+                imeAction = ImeAction.Send
             )
+        )
         Slider(
             value = count.toFloat(),
             steps = 7,
@@ -182,7 +210,7 @@ fun Table(points: List<PointF>) {
             }
         }
         // Here are all the lines of your table.
-        items(points) {point ->
+        items(points) { point ->
             Column(Modifier.fillMaxWidth()) {
                 TableCell(text = "%.1f".format(point.x))
                 TableCell(text = "%.1f".format(point.y))
@@ -190,6 +218,7 @@ fun Table(points: List<PointF>) {
         }
     }
 }
+
 @Composable
 fun TableCell(
     text: String,
@@ -245,7 +274,7 @@ private fun ComposeChart1(modelProducer: CartesianChartModelProducer, modifier: 
 
 private const val PERSISTENT_MARKER_X = 7f
 
-class GraphViewModel(private val remote: PointRemote): ViewModel() {
+class GraphViewModel(private val remote: PointRemote) : ViewModel() {
     private val _graphDataFlow: MutableStateFlow<GraphData> = MutableStateFlow(GraphData.Idle(null))
     private val _countFlow: MutableStateFlow<Int> = MutableStateFlow(0)
 
@@ -255,19 +284,23 @@ class GraphViewModel(private val remote: PointRemote): ViewModel() {
                 val previousValue = _graphDataFlow.value
                 _graphDataFlow.value = GraphData.Loading(previousValue.currentPoints)
                 val response = remote.getPoints(count)
-                when(response){
+                when (response) {
                     is PointRemote.Response.Success -> {
-                        _graphDataFlow.value = GraphData.Idle(response.points.points.sortedBy { it.x }.map { PointF(it.x, it.y) })
+                        _graphDataFlow.value =
+                            GraphData.Idle(response.points.points.sortedBy { it.x }
+                                .map { PointF(it.x, it.y) })
                     }
+
                     is PointRemote.Response.Failure -> {
-                        _graphDataFlow.value = GraphData.Error(previousValue.currentPoints, response.errorMsg)
+                        _graphDataFlow.value =
+                            GraphData.Error(previousValue.currentPoints, response.errorMsg)
                     }
                 }
             }
         }
     }
 
-    val state : StateFlow<State> = _countFlow.combine(_graphDataFlow){ count, graphData ->
+    val state: StateFlow<State> = _countFlow.combine(_graphDataFlow) { count, graphData ->
         State(
             pointToRequestCount = count,
             getPointsStatus = 0,
@@ -277,10 +310,11 @@ class GraphViewModel(private val remote: PointRemote): ViewModel() {
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
-        initialValue = State.default)
+        initialValue = State.default
+    )
 
-    fun handleEvent(event: Event){
-        when(event){
+    fun handleEvent(event: Event) {
+        when (event) {
             is Event.CountTextInput -> {
                 _countFlow.value = when {
                     event.countText.isNullOrBlank() -> 0
@@ -291,6 +325,7 @@ class GraphViewModel(private val remote: PointRemote): ViewModel() {
                     }
                 }
             }
+
             is Event.CountSliderInput -> {
                 _countFlow.value = event.sliderPosition.toInt()
             }
@@ -298,22 +333,23 @@ class GraphViewModel(private val remote: PointRemote): ViewModel() {
     }
 
     sealed interface Event {
-        data class CountTextInput(val countText: String): Event
-        data class CountSliderInput(val sliderPosition: Float): Event
+        data class CountTextInput(val countText: String) : Event
+        data class CountSliderInput(val sliderPosition: Float) : Event
     }
 
     data class State(
         val pointToRequestCount: Int,
         val getPointsStatus: Int,
         val graphData: GraphData,
-        val uiState: UiState){
+        val uiState: UiState
+    ) {
 
         data class UiState(
             val graphType: GraphType,
         ) {
-            sealed interface GraphType{
-                object Sharp: GraphType
-                object Smooth: GraphType
+            sealed interface GraphType {
+                object Sharp : GraphType
+                object Smooth : GraphType
             }
 
             companion object {
@@ -327,30 +363,28 @@ class GraphViewModel(private val remote: PointRemote): ViewModel() {
     }
 
     sealed class GraphData(val currentPoints: List<PointF>?) {
-        class Loading(currentPoints: List<PointF>?): GraphData(currentPoints)
-        class Idle(currentPoints: List<PointF>?): GraphData(currentPoints)
-        class Error(currentPoints: List<PointF>?, val errorMsg: String): GraphData(currentPoints)
-        class Outdated(currentPoints: List<PointF>?): GraphData(currentPoints)
+        class Loading(currentPoints: List<PointF>?) : GraphData(currentPoints)
+        class Idle(currentPoints: List<PointF>?) : GraphData(currentPoints)
+        class Error(currentPoints: List<PointF>?, val errorMsg: String) : GraphData(currentPoints)
+        class Outdated(currentPoints: List<PointF>?) : GraphData(currentPoints)
     }
 }
-
-
 
 interface PointRemote {
     suspend fun getPoints(count: Int): Response
 
     sealed interface Response {
         data class Success(val points: Points) : Response
-        data class Failure(val errorMsg: String): Response
+        data class Failure(val errorMsg: String) : Response
     }
 }
 
-object TestPointRemote: PointRemote {
+object TestPointRemote : PointRemote {
     private val rnd = Random(0)
 
     override suspend fun getPoints(count: Int): PointRemote.Response {
         delay((rnd.nextFloat() * 2000F).toLong())
-        return if(true) {
+        return if (true) {
             PointRemote.Response.Success(Points(List(count) {
                 GraphPoint(it.toFloat() * 600 / count, rnd.nextFloat() * 1000)
             }))
@@ -360,10 +394,10 @@ object TestPointRemote: PointRemote {
     }
 }
 
+@Serializable
+data class Points(@SerialName("points") val points: List<GraphPoint>)
 
 @Serializable
-data class Points(@SerialName("points")  val points: List<GraphPoint>)
-@Serializable
-data class GraphPoint(@SerialName("x")val x: Float, @SerialName("y") val y: Float)
+data class GraphPoint(@SerialName("x") val x: Float, @SerialName("y") val y: Float)
 
 
