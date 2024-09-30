@@ -33,6 +33,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
@@ -70,11 +72,14 @@ import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
 import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
 import io.ktor.client.HttpClient
+import io.ktor.client.call.body
 import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,7 +92,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
     private val viewModel = GraphViewModel(TYPointRemote(HttpClient {
@@ -117,6 +121,8 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GraphScreen(viewModel: GraphViewModel) {
+    val snackbarHostState = remember { SnackbarHostState() }
+
     TYTESTTheme {
         // A surface container using the 'background' color from the theme
         Scaffold(
@@ -131,8 +137,12 @@ fun GraphScreen(viewModel: GraphViewModel) {
                         }
                     }
                 )
+            },
+            snackbarHost = {
+                SnackbarHost(hostState = snackbarHostState)
             }
         ) {
+            val scope = rememberCoroutineScope()
             val state by viewModel.state.collectAsState()
             when (LocalConfiguration.current.orientation) {
                 Configuration.ORIENTATION_PORTRAIT, Configuration.ORIENTATION_UNDEFINED -> Portrait(
@@ -148,6 +158,14 @@ fun GraphScreen(viewModel: GraphViewModel) {
                 )
 
                 else -> Text(text = "Unsupported orientation")
+            }
+
+            state.graphData.run {
+                if(this is GraphViewModel.GraphData.Error) {
+                    scope.launch {
+                        snackbarHostState.showSnackbar(errorMsg)
+                    }
+                }
             }
         }
     }
@@ -525,25 +543,42 @@ interface PointRemote {
     }
 }
 
-object TestPointRemote : PointRemote {
-    private val rnd = Random(0)
+//object TestPointRemote : PointRemote {
+//    private val rnd = Random(0)
+//
+//    override suspend fun getPoints(count: Int): PointRemote.Response {
+//        delay(5000L)
+//        return if (true) {
+//            PointRemote.Response.Success(Points(List(count) {
+//                GraphPoint(it.toFloat(), rnd.nextFloat())
+//            }))
+//        } else {
+//            PointRemote.Response.Failure("Unable to load points")
+//        }
+//    }
+//}
 
+class TYPointRemote(private val client: HttpClient): PointRemote {
     override suspend fun getPoints(count: Int): PointRemote.Response {
-        delay(5000L)
-        return if (true) {
-            PointRemote.Response.Success(Points(List(count) {
-                GraphPoint(it.toFloat(), rnd.nextFloat())
-            }))
+        return if(count in RANGE) {
+            val response = client.get("$BASE_URL/$POINTS_PATH?count=$count")
+            when (response.status) {
+                HttpStatusCode.OK -> {
+                    PointRemote.Response.Success(response.body())
+                }
+                else -> {
+                    PointRemote.Response.Failure("Request has failed with error code: ${response.status}")
+                }
+            }
         } else {
-            PointRemote.Response.Failure("Unable to load points")
+            PointRemote.Response.Failure("Count is out of bounds $RANGE")
         }
     }
-}
 
-class TYPointRemote(httpClient: HttpClient) : PointRemote {
-    override suspend fun getPoints(count: Int): PointRemote.Response {
-        //        httpClient.
-        TODO()
+    companion object {
+        private val RANGE = 1..20
+        private const val BASE_URL = "https://hr-challenge.dev.tapyou.com/api"
+        private const val POINTS_PATH = "test/points"
     }
 }
 
