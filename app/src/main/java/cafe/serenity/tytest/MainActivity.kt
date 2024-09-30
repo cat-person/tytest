@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -45,7 +46,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PointMode
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
@@ -57,30 +63,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cafe.serenity.tytest.ui.theme.TYTESTTheme
-import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
-import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottom
-import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStart
-import com.patrykandpatrick.vico.compose.cartesian.cartesianLayerPadding
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
-import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
-import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
-import com.patrykandpatrick.vico.compose.common.fill
-import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
-import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
-import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.plugins.DefaultRequest
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -91,24 +79,25 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import kotlin.random.Random
+
 
 class MainActivity : ComponentActivity() {
-    private val viewModel = GraphViewModel(TYPointRemote(HttpClient {
-        install(ContentNegotiation) {
-            json(Json {
-                prettyPrint = true
-                isLenient = true
-                ignoreUnknownKeys = true
-            })
-        }
+//    private val viewModel = GraphViewModel(TYPointRemote(HttpClient {
+//        install(ContentNegotiation) {
+//            json(Json {
+//                prettyPrint = true
+//                isLenient = true
+//                ignoreUnknownKeys = true
+//            })
+//        }
+//
+//        install(DefaultRequest) {
+//            header(HttpHeaders.ContentType, ContentType.Application.Json)
+//        }
+//    }))
 
-        install(DefaultRequest) {
-            header(HttpHeaders.ContentType, ContentType.Application.Json)
-        }
-    }))
-
-//    private val viewModel = GraphViewModel(TestPointRemote)
+    private val viewModel = GraphViewModel(TestPointRemote)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -161,7 +150,7 @@ fun GraphScreen(viewModel: GraphViewModel) {
             }
 
             state.graphData.run {
-                if(this is GraphViewModel.GraphData.Error) {
+                if (this is GraphViewModel.GraphData.Error) {
                     scope.launch {
                         snackbarHostState.showSnackbar(errorMsg)
                     }
@@ -184,12 +173,12 @@ fun Portrait(
     ) {
         Table(state.graphData)
         Graph(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxSize().weight(0.8f),
             state.graphData,
             state.uiState.graphType,
             handleEvent
         )
-        Spacer(modifier = Modifier.weight(1.0f))
+        Spacer(modifier = Modifier.weight(0.2f))
         CountSlider(state.pointToRequestCount, state.uiState.countInput, handleEvent)
     }
 }
@@ -221,7 +210,11 @@ fun Landscape(
 }
 
 @Composable
-fun CountSlider(count: Int, textFieldValue: TextFieldValue, handleEvent: (event: GraphViewModel.Event) -> Unit) {
+fun CountSlider(
+    count: Int,
+    textFieldValue: TextFieldValue,
+    handleEvent: (event: GraphViewModel.Event) -> Unit
+) {
     Column(
         modifier = Modifier
             .padding(16.dp)
@@ -308,62 +301,47 @@ fun Graph(
 ) {
     Box(modifier = modifier) {
         graphData.points.let { points ->
-            val modelProducer = remember { CartesianChartModelProducer() }
             if (!points.isNullOrEmpty()) {
-                rememberCoroutineScope().launch {
-                    modelProducer.runTransaction {
-                        lineSeries {
-                            series(points.map { it.x },
-                                points.map { it.y })
-                        }
+                Canvas(modifier = Modifier.fillMaxSize().padding(0.dp, 0.dp, 0.dp, 64.dp), onDraw = {
+
+                    this.drawRect(
+                        color = Color.LightGray,
+                        size = size)
+
+                    val color = when (graphData) {
+                        is GraphViewModel.GraphData.Idle -> Color.Green
+                        is GraphViewModel.GraphData.Error -> Color.Red
+                        is GraphViewModel.GraphData.Loading -> Color.LightGray
+                        is GraphViewModel.GraphData.Outdated -> Color.DarkGray
                     }
-                }
-                CartesianChartHost(
-                    chart = rememberCartesianChart(
-                        rememberLineCartesianLayer(
-                            LineCartesianLayer.LineProvider.series(
-                                LineCartesianLayer.rememberLine(
-                                    fill = LineCartesianLayer.LineFill.single(
-                                        fill(
-                                            when (graphData) {
-                                                is GraphViewModel.GraphData.Idle -> Color.Green
-                                                is GraphViewModel.GraphData.Error -> Color.Red
-                                                is GraphViewModel.GraphData.Loading -> Color.LightGray
-                                                is GraphViewModel.GraphData.Outdated -> Color.DarkGray
-                                            }
-                                        )
-                                    ),
-                                    pointConnector = if (graphType == GraphViewModel.State.UiState.GraphType.Sharp) {
-                                        LineCartesianLayer.PointConnector.cubic(0f)
-                                    } else {
-                                        LineCartesianLayer.PointConnector.cubic()
-                                    }
-                                )
+
+                    if (graphType == GraphViewModel.State.UiState.GraphType.Sharp) {
+                        this.drawPoints(
+                            points.map { Offset(it.x, it.y) },
+                            pointMode = PointMode.Polygon,
+                            color = color
+                        )
+                    } else {
+                        this.drawPath(
+                            path = Path().apply {
+                                moveTo(points[0].x, points[0].y)
+
+                                (1..points.size - 1).forEach { idx ->
+                                    this.cubicTo(
+                                        (points[idx].x + points[idx - 1].x) / 2f, points[idx - 1].y,
+                                        (points[idx].x + points[idx - 1].x) / 2f, points[idx].y,
+                                        points[idx].x, points[idx].y
+                                    )
+                                }
+                            },
+                            color = color,
+                            style = Stroke(
+                                width = 2.dp.toPx(),
+                                cap = StrokeCap.Round
                             )
-                        ),
-                        startAxis = VerticalAxis.rememberStart(),
-                        bottomAxis = HorizontalAxis.rememberBottom(
-                            guideline = null,
-                            itemPlacer = remember { HorizontalAxis.ItemPlacer.segmented() },
-                        ),
-                        layerPadding = cartesianLayerPadding(
-                            scalableStartPadding = 16.dp,
-                            scalableEndPadding = 16.dp
-                        ),
-                    ),
-                    modelProducer = modelProducer,
-                    modifier = Modifier.padding(0.dp, 0.dp, 0.dp, 54.dp),
-                    zoomState = rememberVicoZoomState(zoomEnabled = true),
-                )
-                if (graphData is GraphViewModel.GraphData.Outdated) {
-                    Text(
-                        modifier = Modifier
-                            .padding(0.dp, 0.dp, 0.dp, 54.dp)
-                            .align(Alignment.Center),
-                        text = "Outdated",
-                        color = Color.DarkGray
-                    )
-                }
+                        )
+                    }
+                })
 
                 Button(
                     modifier = Modifier.align(Alignment.BottomEnd),
@@ -385,11 +363,19 @@ fun Graph(
                             )
                         )
                     })
+
+                if (graphData is GraphViewModel.GraphData.Outdated) {
+                    Text(
+                        modifier = Modifier
+                            .padding(0.dp, 0.dp, 0.dp, 54.dp)
+                            .align(Alignment.Center),
+                        text = "Outdated",
+                        color = Color.DarkGray
+                    )
+                }
             } else {
                 NoDataText()
             }
-
-
         }
         if (graphData is GraphViewModel.GraphData.Loading) {
             CircularProgressIndicator(
@@ -410,16 +396,22 @@ class GraphViewModel(private val remote: PointRemote) : ViewModel() {
     private val _graphTypeFlow: MutableStateFlow<State.UiState.GraphType> =
         MutableStateFlow(State.UiState.GraphType.Smooth)
     private val _countFlow: MutableStateFlow<Int> = MutableStateFlow(10)
-    private val _countInputFlow: MutableStateFlow<TextFieldValue> = MutableStateFlow(_countFlow.value.toString().let {
-        TextFieldValue(text = it, selection = TextRange(0, it.length))
-    })
+    private val _countInputFlow: MutableStateFlow<TextFieldValue> =
+        MutableStateFlow(_countFlow.value.toString().let {
+            TextFieldValue(text = it, selection = TextRange(0, it.length))
+        })
 
     val state: StateFlow<State> =
-        combine(_countFlow, _graphDataFlow, _graphTypeFlow, _countInputFlow) { count, graphData, graphType, _countInput ->
+        combine(
+            _countFlow,
+            _graphDataFlow,
+            _graphTypeFlow,
+            _countInputFlow
+        ) { count, graphData, graphType, _countInput ->
             State(
                 pointToRequestCount = count,
                 graphData = graphData,
-                uiState = State.UiState(graphType, _countInput)
+                uiState = State.UiState(graphType, _countInput, producer)
             )
         }.stateIn(
             scope = viewModelScope,
@@ -427,10 +419,25 @@ class GraphViewModel(private val remote: PointRemote) : ViewModel() {
             initialValue = State.default
         )
 
+    private val producer = CartesianChartModelProducer()
+
     init {
         viewModelScope.launch {
             _countFlow.collectLatest {
                 loadGraphData(it)
+            }
+        }
+
+        viewModelScope.launch {
+            _graphDataFlow.collectLatest { graphData ->
+                graphData.points?.let { points ->
+                    producer.runTransaction {
+                        lineSeries {
+                            series(points.map { it.x },
+                                points.map { it.y })
+                        }
+                    }
+                }
             }
         }
     }
@@ -455,7 +462,10 @@ class GraphViewModel(private val remote: PointRemote) : ViewModel() {
             is Event.CountSliderInput -> {
                 event.sliderPosition.toInt().run {
                     _countFlow.value = this
-                    _countInputFlow.value = TextFieldValue(text = this.toString(), selection = TextRange(0, this.toString().length))
+                    _countInputFlow.value = TextFieldValue(
+                        text = this.toString(),
+                        selection = TextRange(0, this.toString().length)
+                    )
                 }
             }
 
@@ -508,6 +518,7 @@ class GraphViewModel(private val remote: PointRemote) : ViewModel() {
         data class UiState(
             val graphType: GraphType,
             val countInput: TextFieldValue,
+            val producer: CartesianChartModelProducer?
         ) {
             sealed interface GraphType {
                 data object Sharp : GraphType
@@ -515,7 +526,7 @@ class GraphViewModel(private val remote: PointRemote) : ViewModel() {
             }
 
             companion object {
-                val default = UiState(GraphType.Sharp, TextFieldValue(0.toString()))
+                val default = UiState(GraphType.Sharp, TextFieldValue(0.toString()), null)
             }
         }
 
@@ -543,29 +554,30 @@ interface PointRemote {
     }
 }
 
-//object TestPointRemote : PointRemote {
-//    private val rnd = Random(0)
-//
-//    override suspend fun getPoints(count: Int): PointRemote.Response {
-//        delay(5000L)
-//        return if (true) {
-//            PointRemote.Response.Success(Points(List(count) {
-//                GraphPoint(it.toFloat(), rnd.nextFloat())
-//            }))
-//        } else {
-//            PointRemote.Response.Failure("Unable to load points")
-//        }
-//    }
-//}
+object TestPointRemote : PointRemote {
+    private val rnd = Random(0)
 
-class TYPointRemote(private val client: HttpClient): PointRemote {
     override suspend fun getPoints(count: Int): PointRemote.Response {
-        return if(count in RANGE) {
+        delay(5000L)
+        return if (true) {
+            PointRemote.Response.Success(Points(List(count) {
+                GraphPoint(it.toFloat() * 50f, rnd.nextFloat() * 1000f)
+            }))
+        } else {
+            PointRemote.Response.Failure("Unable to load points")
+        }
+    }
+}
+
+class TYPointRemote(private val client: HttpClient) : PointRemote {
+    override suspend fun getPoints(count: Int): PointRemote.Response {
+        return if (count in RANGE) {
             val response = client.get("$BASE_URL/$POINTS_PATH?count=$count")
             when (response.status) {
                 HttpStatusCode.OK -> {
                     PointRemote.Response.Success(response.body())
                 }
+
                 else -> {
                     PointRemote.Response.Failure("Request has failed with error code: ${response.status}")
                 }
