@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -96,7 +97,6 @@ class MainActivity : ComponentActivity() {
 }
 
 
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GraphScreen(viewModel: GraphViewModel) {
@@ -114,8 +114,13 @@ fun GraphScreen(viewModel: GraphViewModel) {
             val state by viewModel.state.collectAsState()
 
             when (LocalConfiguration.current.orientation) {
-                Configuration.ORIENTATION_PORTRAIT, Configuration.ORIENTATION_UNDEFINED -> Portrait(it, state, viewModel::handleEvent)
-                Configuration.ORIENTATION_LANDSCAPE -> Landscape(it, state)
+                Configuration.ORIENTATION_PORTRAIT, Configuration.ORIENTATION_UNDEFINED -> Portrait(
+                    it,
+                    state,
+                    viewModel::handleEvent
+                )
+
+                Configuration.ORIENTATION_LANDSCAPE -> Landscape(it, state, viewModel::handleEvent)
                 else -> Text(text = "Unsupported orientation")
             }
 
@@ -124,23 +129,46 @@ fun GraphScreen(viewModel: GraphViewModel) {
 }
 
 @Composable
-fun Portrait(paddingValues: PaddingValues, state: GraphViewModel.State, handleEvent: (event: GraphViewModel.Event) -> Unit) {
+fun Portrait(
+    paddingValues: PaddingValues,
+    state: GraphViewModel.State,
+    handleEvent: (event: GraphViewModel.Event) -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(paddingValues)
     ) {
-        GraphData(points = state.graphData.currentPoints)
+        state.graphData.currentPoints.let {
+            if (!it.isNullOrEmpty()) {
+                Table(it)
+                Graph(Modifier.padding(16.dp), it, state.uiState.graphType, handleEvent)
+
+            } else {
+                Text(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(360.dp)
+                        .wrapContentHeight(align = Alignment.CenterVertically),
+                    textAlign = TextAlign.Center,
+                    text = "No data",
+                )
+            }
+        }
         Spacer(modifier = Modifier.weight(1.0f))
         CountSlider(state.pointToRequestCount, handleEvent)
     }
 }
 
 @Composable
-fun Landscape(paddingValues: PaddingValues, state: GraphViewModel.State) {
+fun Landscape(paddingValues: PaddingValues, state: GraphViewModel.State, handleEvent: (event: GraphViewModel.Event) -> Unit) {
     state.graphData.currentPoints.let {
-        if(!it.isNullOrEmpty()) {
-            Graph(modifier = Modifier.padding(paddingValues), points = it)
+        if (!it.isNullOrEmpty()) {
+            Graph(
+                modifier = Modifier.padding(paddingValues),
+                points = it,
+                graphType = state.uiState.graphType,
+                handleEvents = handleEvent)
         } else {
             Text(text = "No data")
         }
@@ -148,37 +176,11 @@ fun Landscape(paddingValues: PaddingValues, state: GraphViewModel.State) {
 }
 
 @Composable
-fun GraphData(points: List<PointF>?) {
-    points.let {
-        if (!it.isNullOrEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(360.dp)
-            ) {
-                Table(it)
-//                Graph(it)
-                Graph(Modifier.padding(16.dp), it)
-
-            }
-        } else {
-            Text(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(360.dp)
-                    .wrapContentHeight(align = Alignment.CenterVertically),
-                textAlign = TextAlign.Center,
-                text = "No data",
-            )
-        }
-    }
-
-}
-
-@Composable
 fun CountSlider(count: Int, handleEvents: (event: GraphViewModel.Event) -> Unit) {
     Column(
-        modifier = Modifier.padding(16.dp)
+        modifier = Modifier
+            .padding(16.dp)
+            .systemGestureExclusion(),
     ) {
         TextField(
             modifier = Modifier.fillMaxWidth(),
@@ -192,13 +194,10 @@ fun CountSlider(count: Int, handleEvents: (event: GraphViewModel.Event) -> Unit)
             )
         )
 
-
-
         Slider(
-            modifier = Modifier.systemGestureExclusion(),
             value = count.toFloat(),
-            steps = 7,
-            valueRange = 0f..100f,
+            steps = 9,
+            valueRange = 0f..20f,
             onValueChange = { handleEvents(GraphViewModel.Event.CountSliderInput(it)) }
         )
     }
@@ -237,7 +236,7 @@ fun TableCell(
 }
 
 @Composable
-fun Graph(modifier: Modifier, points: List<PointF>) {
+fun Graph(modifier: Modifier, points: List<PointF>, graphType: GraphViewModel.State.UiState.GraphType, handleEvents: (event: GraphViewModel.Event) -> Unit) {
     val modelProducer = remember { CartesianChartModelProducer() }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) {
@@ -247,41 +246,60 @@ fun Graph(modifier: Modifier, points: List<PointF>) {
         }
     }
 
-    ComposeChart1(modelProducer, modifier)
-}
-
-@Composable
-private fun ComposeChart1(modelProducer: CartesianChartModelProducer, modifier: Modifier) {
     CartesianChartHost(
-        chart =
-        rememberCartesianChart(
+        chart = rememberCartesianChart(
             rememberLineCartesianLayer(
                 LineCartesianLayer.LineProvider.series(
                     LineCartesianLayer.rememberLine(
-                        remember { LineCartesianLayer.LineFill.single(fill(Color(0xffa485e0))) }
+                        remember {
+                            LineCartesianLayer.LineFill.single(fill(Color.White))
+                        }
+
                     )
                 )
             ),
             startAxis = VerticalAxis.rememberStart(),
-            bottomAxis =
-            HorizontalAxis.rememberBottom(
+            bottomAxis = HorizontalAxis.rememberBottom(
                 guideline = null,
                 itemPlacer = remember { HorizontalAxis.ItemPlacer.segmented() },
             ),
-            layerPadding =
-            cartesianLayerPadding(scalableStartPadding = 16.dp, scalableEndPadding = 16.dp),
+            layerPadding = cartesianLayerPadding(scalableStartPadding = 16.dp, scalableEndPadding = 16.dp),
         ),
         modelProducer = modelProducer,
         modifier = modifier,
-        zoomState = rememberVicoZoomState(zoomEnabled = false),
+        zoomState = rememberVicoZoomState(zoomEnabled = true),
     )
-}
 
-private const val PERSISTENT_MARKER_X = 7f
+    Button(
+        content = { Text(text = when(graphType) {
+            GraphViewModel.State.UiState.GraphType.Smooth -> "Smooth"
+            else -> "Sharp"
+        }) },
+        onClick = { handleEvents(GraphViewModel.Event.SetGraphType(
+            when(graphType) {
+                GraphViewModel.State.UiState.GraphType.Smooth -> GraphViewModel.State.UiState.GraphType.Sharp
+                else -> GraphViewModel.State.UiState.GraphType.Smooth
+            }
+        )) })
+}
 
 class GraphViewModel(private val remote: PointRemote) : ViewModel() {
     private val _graphDataFlow: MutableStateFlow<GraphData> = MutableStateFlow(GraphData.Idle(null))
+    private val _graphTypeFlow: MutableStateFlow<State.UiState.GraphType> = MutableStateFlow(State.UiState.GraphType.Smooth)
     private val _countFlow: MutableStateFlow<Int> = MutableStateFlow(0)
+
+    val state: StateFlow<State> = combine(_countFlow, _graphDataFlow, _graphTypeFlow) { count, graphData, graphType ->
+        State(
+            pointToRequestCount = count,
+            getPointsStatus = 0,
+            graphData = graphData,
+            uiState = State.UiState(graphType)
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = State.default
+    )
 
     init {
         viewModelScope.launch {
@@ -305,18 +323,7 @@ class GraphViewModel(private val remote: PointRemote) : ViewModel() {
         }
     }
 
-    val state: StateFlow<State> = _countFlow.combine(_graphDataFlow) { count, graphData ->
-        State(
-            pointToRequestCount = count,
-            getPointsStatus = 0,
-            graphData = graphData,
-            uiState = State.UiState.default
-        )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = State.default
-    )
+
 
     fun handleEvent(event: Event) {
         when (event) {
@@ -334,12 +341,16 @@ class GraphViewModel(private val remote: PointRemote) : ViewModel() {
             is Event.CountSliderInput -> {
                 _countFlow.value = event.sliderPosition.toInt()
             }
+            is Event.SetGraphType -> {
+                _graphTypeFlow.value = event.graphType
+            }
         }
     }
 
     sealed interface Event {
         data class CountTextInput(val countText: String) : Event
         data class CountSliderInput(val sliderPosition: Float) : Event
+        data class SetGraphType(val graphType: State.UiState.GraphType) : Event
     }
 
     data class State(
