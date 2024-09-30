@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -161,14 +162,19 @@ fun Portrait(
 }
 
 @Composable
-fun Landscape(paddingValues: PaddingValues, state: GraphViewModel.State, handleEvent: (event: GraphViewModel.Event) -> Unit) {
+fun Landscape(
+    paddingValues: PaddingValues,
+    state: GraphViewModel.State,
+    handleEvent: (event: GraphViewModel.Event) -> Unit
+) {
     state.graphData.currentPoints.let {
         if (!it.isNullOrEmpty()) {
             Graph(
                 modifier = Modifier.padding(paddingValues),
                 points = it,
                 graphType = state.uiState.graphType,
-                handleEvents = handleEvent)
+                handleEvents = handleEvent
+            )
         } else {
             Text(text = "No data")
         }
@@ -236,70 +242,94 @@ fun TableCell(
 }
 
 @Composable
-fun Graph(modifier: Modifier, points: List<PointF>, graphType: GraphViewModel.State.UiState.GraphType, handleEvents: (event: GraphViewModel.Event) -> Unit) {
-    val modelProducer = remember { CartesianChartModelProducer() }
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.Default) {
-            modelProducer.runTransaction {
-                lineSeries { series(points.map { it.x }, points.map { it.y }) }
+fun Graph(
+    modifier: Modifier,
+    points: List<PointF>,
+    graphType: GraphViewModel.State.UiState.GraphType,
+    handleEvents: (event: GraphViewModel.Event) -> Unit
+) {
+    Box(modifier = modifier) {
+        val modelProducer = remember { CartesianChartModelProducer() }
+        LaunchedEffect(Unit) {
+            withContext(Dispatchers.Default) {
+                modelProducer.runTransaction {
+                    lineSeries { series(points.map { it.x }, points.map { it.y }) }
+                }
             }
         }
-    }
+        CartesianChartHost(
+            chart = rememberCartesianChart(
+                rememberLineCartesianLayer(
+                    LineCartesianLayer.LineProvider.series(
+                        LineCartesianLayer.rememberLine(
+                            fill = remember {
+                                LineCartesianLayer.LineFill.single(fill(Color.White))
+                            },
+                            pointConnector = if (graphType == GraphViewModel.State.UiState.GraphType.Sharp) {
+                                LineCartesianLayer.PointConnector.cubic(0f)
+                            } else {
+                                LineCartesianLayer.PointConnector.cubic()
+                            }
+                        )
+                    )
+                ),
+                startAxis = VerticalAxis.rememberStart(),
+                bottomAxis = HorizontalAxis.rememberBottom(
+                    guideline = null,
+                    itemPlacer = remember { HorizontalAxis.ItemPlacer.segmented() },
+                ),
+                layerPadding = cartesianLayerPadding(
+                    scalableStartPadding = 16.dp,
+                    scalableEndPadding = 16.dp
+                ),
+            ),
+            modelProducer = modelProducer,
+            modifier = Modifier.padding(0.dp, 0.dp, 0.dp, 54.dp),
+            zoomState = rememberVicoZoomState(zoomEnabled = true),
+        )
 
-    CartesianChartHost(
-        chart = rememberCartesianChart(
-            rememberLineCartesianLayer(
-                LineCartesianLayer.LineProvider.series(
-                    LineCartesianLayer.rememberLine(
-                        remember {
-                            LineCartesianLayer.LineFill.single(fill(Color.White))
+        Button(
+            modifier = Modifier.align(Alignment.BottomEnd),
+            content = {
+                Text(
+                    text = when (graphType) {
+                        GraphViewModel.State.UiState.GraphType.Smooth -> "Smooth"
+                        else -> "Sharp"
+                    }
+                )
+            },
+            onClick = {
+                handleEvents(
+                    GraphViewModel.Event.SetGraphType(
+                        when (graphType) {
+                            GraphViewModel.State.UiState.GraphType.Smooth -> GraphViewModel.State.UiState.GraphType.Sharp
+                            else -> GraphViewModel.State.UiState.GraphType.Smooth
                         }
-
                     )
                 )
-            ),
-            startAxis = VerticalAxis.rememberStart(),
-            bottomAxis = HorizontalAxis.rememberBottom(
-                guideline = null,
-                itemPlacer = remember { HorizontalAxis.ItemPlacer.segmented() },
-            ),
-            layerPadding = cartesianLayerPadding(scalableStartPadding = 16.dp, scalableEndPadding = 16.dp),
-        ),
-        modelProducer = modelProducer,
-        modifier = modifier,
-        zoomState = rememberVicoZoomState(zoomEnabled = true),
-    )
-
-    Button(
-        content = { Text(text = when(graphType) {
-            GraphViewModel.State.UiState.GraphType.Smooth -> "Smooth"
-            else -> "Sharp"
-        }) },
-        onClick = { handleEvents(GraphViewModel.Event.SetGraphType(
-            when(graphType) {
-                GraphViewModel.State.UiState.GraphType.Smooth -> GraphViewModel.State.UiState.GraphType.Sharp
-                else -> GraphViewModel.State.UiState.GraphType.Smooth
-            }
-        )) })
+            })
+    }
 }
 
 class GraphViewModel(private val remote: PointRemote) : ViewModel() {
     private val _graphDataFlow: MutableStateFlow<GraphData> = MutableStateFlow(GraphData.Idle(null))
-    private val _graphTypeFlow: MutableStateFlow<State.UiState.GraphType> = MutableStateFlow(State.UiState.GraphType.Smooth)
+    private val _graphTypeFlow: MutableStateFlow<State.UiState.GraphType> =
+        MutableStateFlow(State.UiState.GraphType.Smooth)
     private val _countFlow: MutableStateFlow<Int> = MutableStateFlow(0)
 
-    val state: StateFlow<State> = combine(_countFlow, _graphDataFlow, _graphTypeFlow) { count, graphData, graphType ->
-        State(
-            pointToRequestCount = count,
-            getPointsStatus = 0,
-            graphData = graphData,
-            uiState = State.UiState(graphType)
+    val state: StateFlow<State> =
+        combine(_countFlow, _graphDataFlow, _graphTypeFlow) { count, graphData, graphType ->
+            State(
+                pointToRequestCount = count,
+                getPointsStatus = 0,
+                graphData = graphData,
+                uiState = State.UiState(graphType)
+            )
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = State.default
         )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = State.default
-    )
 
     init {
         viewModelScope.launch {
@@ -324,7 +354,6 @@ class GraphViewModel(private val remote: PointRemote) : ViewModel() {
     }
 
 
-
     fun handleEvent(event: Event) {
         when (event) {
             is Event.CountTextInput -> {
@@ -341,6 +370,7 @@ class GraphViewModel(private val remote: PointRemote) : ViewModel() {
             is Event.CountSliderInput -> {
                 _countFlow.value = event.sliderPosition.toInt()
             }
+
             is Event.SetGraphType -> {
                 _graphTypeFlow.value = event.graphType
             }
