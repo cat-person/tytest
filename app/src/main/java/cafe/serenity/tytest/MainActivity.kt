@@ -2,11 +2,9 @@ package cafe.serenity.tytest
 
 import android.graphics.PointF
 import android.os.Bundle
-import android.text.Layout
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
@@ -20,7 +18,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -33,7 +30,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -43,7 +39,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cafe.serenity.tytest.ui.theme.TYTESTTheme
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
-import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisGuidelineComponent
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottom
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStart
 import com.patrykandpatrick.vico.compose.cartesian.cartesianLayerPadding
@@ -51,36 +46,12 @@ import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
-import com.patrykandpatrick.vico.compose.common.component.rememberLayeredComponent
-import com.patrykandpatrick.vico.compose.common.component.rememberShapeComponent
-import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
-import com.patrykandpatrick.vico.compose.common.component.shadow
-import com.patrykandpatrick.vico.compose.common.data.rememberExtraLambda
-import com.patrykandpatrick.vico.compose.common.dimensions
 import com.patrykandpatrick.vico.compose.common.fill
-import com.patrykandpatrick.vico.compose.common.shape.markerCorneredShape
-import com.patrykandpatrick.vico.core.cartesian.CartesianMeasuringContext
-import com.patrykandpatrick.vico.core.cartesian.HorizontalDimensions
 import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
-import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModel
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
 import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
-import com.patrykandpatrick.vico.core.cartesian.marker.CartesianMarker
-import com.patrykandpatrick.vico.core.cartesian.marker.DefaultCartesianMarker
-import com.patrykandpatrick.vico.core.common.Insets
-import com.patrykandpatrick.vico.core.common.LayeredComponent
-import com.patrykandpatrick.vico.core.common.component.Shadow
-import com.patrykandpatrick.vico.core.common.component.ShapeComponent
-import com.patrykandpatrick.vico.core.common.component.TextComponent
-import com.patrykandpatrick.vico.core.common.copyColor
-import com.patrykandpatrick.vico.core.common.shape.Corner
-import com.patrykandpatrick.vico.core.common.shape.CorneredShape
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.request.get
-import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -159,7 +130,7 @@ fun GraphData(points: List<PointF>?){
             ) {
                 Table(it)
 //                Graph(it)
-                Chart1(Modifier.padding(16.dp))
+                Graph(Modifier.padding(16.dp), it)
 
             }
         } else {
@@ -232,39 +203,12 @@ fun TableCell(
 }
 
 @Composable
-fun Graph(points: List<PointF>) {
-
-//    val maxY, minY
-
-//    size.width
-
-    val offsets = points.map {
-        Offset(it.x, it.y)
-    }.toList()
-
-    Canvas(
-        modifier = Modifier
-            .fillMaxSize(),
-        onDraw = {
-//            drawPoints(
-//                points = offsets,
-//                pointMode = PointMode.Polygon,
-//                color = Color.Red)
-
-        })
-}
-
-//uiFramework: UIFramework,
-
-@Composable
-fun Chart1(modifier: Modifier) {
+fun Graph(modifier: Modifier, points: List<PointF>) {
     val modelProducer = remember { CartesianChartModelProducer() }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) {
             modelProducer.runTransaction {
-                /* Learn more:
-                https://patrykandpatrick.com/vico/wiki/cartesian-charts/layers/line-layer#data. */
-                lineSeries { series(x, x.map { Random.nextFloat() * 15 }) }
+                lineSeries { series(points.map { it.x }, points.map { it.y }) }
             }
         }
     }
@@ -274,7 +218,6 @@ fun Chart1(modifier: Modifier) {
 
 @Composable
 private fun ComposeChart1(modelProducer: CartesianChartModelProducer, modifier: Modifier) {
-    val marker = rememberMarker()
     CartesianChartHost(
         chart =
         rememberCartesianChart(
@@ -291,10 +234,8 @@ private fun ComposeChart1(modelProducer: CartesianChartModelProducer, modifier: 
                 guideline = null,
                 itemPlacer = remember { HorizontalAxis.ItemPlacer.segmented() },
             ),
-            marker = marker,
             layerPadding =
             cartesianLayerPadding(scalableStartPadding = 16.dp, scalableEndPadding = 16.dp),
-            persistentMarkers = rememberExtraLambda(marker) { marker at PERSISTENT_MARKER_X },
         ),
         modelProducer = modelProducer,
         modifier = modifier,
@@ -303,57 +244,6 @@ private fun ComposeChart1(modelProducer: CartesianChartModelProducer, modifier: 
 }
 
 private const val PERSISTENT_MARKER_X = 7f
-
-private val x = (1..50).toList()
-
-//@Composable
-//private fun StraightLinechart(points: List<PointF>) {
-//    var width by remember { mutableStateOf(0)}
-//
-//    val xAxisData = AxisData.Builder()
-//        .axisStepSize(((width - 120) / (LocalDensity.current.density * points.size)).dp)
-//        .steps(points.size - 1)
-//        .labelData { it.toString() }
-//        .axisLabelAngle(20f)
-//        .labelAndAxisLinePadding(15.dp)
-//        .axisLabelColor(Color.Blue)
-//        .axisLineColor(Color.DarkGray)
-//        .build()
-//    val yAxisData = AxisData.Builder()
-//        .steps(10)
-//        .labelData { it.toString() }
-//        .labelAndAxisLinePadding(30.dp)
-//        .axisLabelColor(Color.Blue)
-//        .axisLineColor(Color.DarkGray)
-//        .build()
-//    val data = LineChartData(
-//        linePlotData = LinePlotData(
-//            lines = listOf(
-//                Line(
-//                    dataPoints = points.map { Point(it.x, it.y) },
-//                    lineStyle = LineStyle(lineType = LineType.Straight(), color = Color.Blue),
-//                    intersectionPoint = IntersectionPoint(color = Color.Red),
-//                    selectionHighlightPopUp = SelectionHighlightPopUp(popUpLabel = { x, y ->
-//                        val xLabel = "x : ${x.toInt()}} "
-//                        val yLabel = "y : ${String.format("%.2f", y)}"
-//                        "$xLabel $yLabel"
-//                    })
-//                )
-//            )
-//        ),
-//        xAxisData = xAxisData,
-//        yAxisData = yAxisData
-//    )
-//    LineChart(
-//        modifier = Modifier
-//            .fillMaxWidth()
-//            .onSizeChanged {
-//                width = it.width
-//            }
-//            .height(300.dp),
-//        lineChartData = data
-//    )
-//}
 
 class GraphViewModel(private val remote: PointRemote): ViewModel() {
     private val _graphDataFlow: MutableStateFlow<GraphData> = MutableStateFlow(GraphData.Idle(null))
@@ -475,122 +365,5 @@ object TestPointRemote: PointRemote {
 data class Points(@SerialName("points")  val points: List<GraphPoint>)
 @Serializable
 data class GraphPoint(@SerialName("x")val x: Float, @SerialName("y") val y: Float)
-
-class TYPointRemote(private val client: HttpClient): PointRemote {
-    private val RANGE = 1..20
-    private val BASE_URL = "https://hr-challenge.dev.tapyou.com/api"
-    private val POINTS_PATH = "test/points"
-
-    override suspend fun getPoints(count: Int): PointRemote.Response {
-        return if(count in RANGE) {
-            val response = client.get("$BASE_URL/$POINTS_PATH?count=$count")
-            when (response.status) {
-                HttpStatusCode.OK -> {
-                    PointRemote.Response.Success(response.body())
-                }
-                else -> {
-                    PointRemote.Response.Failure("Request has failed with error code: ${response.status}")
-                }
-            }
-        } else {
-            PointRemote.Response.Failure("Count is out of bounds $RANGE")
-        }
-    }
-}
-
-@Composable
-internal fun rememberMarker(
-    labelPosition: DefaultCartesianMarker.LabelPosition = DefaultCartesianMarker.LabelPosition.Top,
-    showIndicator: Boolean = true,
-): CartesianMarker {
-    val labelBackgroundShape = markerCorneredShape(Corner.FullyRounded)
-    val labelBackground =
-        rememberShapeComponent(
-            color = MaterialTheme.colorScheme.surfaceBright,
-            shape = labelBackgroundShape,
-            shadow =
-            shadow(radius = LABEL_BACKGROUND_SHADOW_RADIUS_DP.dp, dy = LABEL_BACKGROUND_SHADOW_DY_DP.dp),
-        )
-    val label =
-        rememberTextComponent(
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlignment = Layout.Alignment.ALIGN_CENTER,
-            padding = dimensions(8.dp, 4.dp),
-            background = labelBackground,
-            minWidth = TextComponent.MinWidth.fixed(40f),
-        )
-    val indicatorFrontComponent =
-        rememberShapeComponent(MaterialTheme.colorScheme.surface, CorneredShape.Pill)
-    val indicatorCenterComponent = rememberShapeComponent(shape = CorneredShape.Pill)
-    val indicatorRearComponent = rememberShapeComponent(shape = CorneredShape.Pill)
-    val indicator =
-        rememberLayeredComponent(
-            rear = indicatorRearComponent,
-            front =
-            rememberLayeredComponent(
-                rear = indicatorCenterComponent,
-                front = indicatorFrontComponent,
-                padding = dimensions(5.dp),
-            ),
-            padding = dimensions(10.dp),
-        )
-    val guideline = rememberAxisGuidelineComponent()
-    return remember(label, labelPosition, indicator, showIndicator, guideline) {
-        object :
-            DefaultCartesianMarker(
-                label = label,
-                labelPosition = labelPosition,
-                indicator =
-                if (showIndicator) {
-                    { color ->
-                        LayeredComponent(
-                            rear = ShapeComponent(color.copyColor(alpha = 0.15f), CorneredShape.Pill),
-                            front =
-                            LayeredComponent(
-                                rear =
-                                ShapeComponent(
-                                    color = color,
-                                    shape = CorneredShape.Pill,
-                                    shadow = Shadow(radiusDp = 12f, color = color),
-                                ),
-                                front = indicatorFrontComponent,
-                                padding = dimensions(5.dp),
-                            ),
-                            padding = dimensions(10.dp),
-                        )
-                    }
-                } else {
-                    null
-                },
-                indicatorSizeDp = 36f,
-                guideline = guideline,
-            ) {
-            override fun updateInsets(
-                context: CartesianMeasuringContext,
-                horizontalDimensions: HorizontalDimensions,
-                model: CartesianChartModel,
-                insets: Insets,
-            ) {
-                with(context) {
-                    val baseShadowInsetDp =
-                        CLIPPING_FREE_SHADOW_RADIUS_MULTIPLIER * LABEL_BACKGROUND_SHADOW_RADIUS_DP
-                    var topInset = (baseShadowInsetDp - LABEL_BACKGROUND_SHADOW_DY_DP).pixels
-                    var bottomInset = (baseShadowInsetDp + LABEL_BACKGROUND_SHADOW_DY_DP).pixels
-                    when (labelPosition) {
-                        LabelPosition.Top,
-                        LabelPosition.AbovePoint -> topInset += label.getHeight(context) + tickSizeDp.pixels
-                        LabelPosition.Bottom -> bottomInset += label.getHeight(context) + tickSizeDp.pixels
-                        LabelPosition.AroundPoint -> {}
-                    }
-                    insets.ensureValuesAtLeast(top = topInset, bottom = bottomInset)
-                }
-            }
-        }
-    }
-}
-
-private const val LABEL_BACKGROUND_SHADOW_RADIUS_DP = 4f
-private const val LABEL_BACKGROUND_SHADOW_DY_DP = 2f
-private const val CLIPPING_FREE_SHADOW_RADIUS_MULTIPLIER = 1.4f
 
 
